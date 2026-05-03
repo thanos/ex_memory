@@ -1,7 +1,7 @@
 defmodule ExMemoryTest do
   use ExUnit.Case, async: true
 
-  alias ExMemory.{Entity, Fact, Event, Source, Reflection, Chunk, Query, Result, Capabilities}
+  alias ExMemory.{Capabilities, Chunk, Entity, Event, Fact, Query, Reflection, Result, Source}
 
   describe "domain models" do
     test "Entity struct has required fields" do

@@ -1,7 +1,7 @@
 defmodule ExMemory.StoreSQLiteTest do
   use ExUnit.Case, async: true
 
-  alias ExMemory.{Store.SQLite, Entity, Fact, Event, Source, Reflection, Capabilities}
+  alias ExMemory.{Capabilities, Entity, Event, Fact, Reflection, Source, Store.SQLite}
 
   setup do
     {:ok, store} = SQLite.init(path: ":memory:")

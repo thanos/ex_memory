@@ -14,7 +14,7 @@ defmodule ExMemory.Store.SQLite do
 
   @behaviour ExMemory.Store
 
-  alias ExMemory.{Entity, Fact, Event, Source, Reflection}
+  alias ExMemory.{Entity, Event, Fact, Reflection, Source}
 
   @create_entities_sql """
   CREATE TABLE IF NOT EXISTS entities (

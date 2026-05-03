@@ -1,7 +1,7 @@
 defmodule ExMemory.VectorSQLiteTest do
   use ExUnit.Case, async: true
 
-  alias ExMemory.{VectorIndex.SQLite, Query, Capabilities}
+  alias ExMemory.{Capabilities, Query, VectorIndex.SQLite}
 
   setup do
     {:ok, idx} = SQLite.init(path: ":memory:")

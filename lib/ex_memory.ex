@@ -28,7 +28,7 @@ defmodule ExMemory do
       })
   """
 
-  alias ExMemory.{Store, VectorIndex, Query, Result, Capabilities}
+  alias ExMemory.{Capabilities, Query, Result, Store, VectorIndex}
 
   _ = {Store, VectorIndex, Query, Result, Capabilities}
 end
