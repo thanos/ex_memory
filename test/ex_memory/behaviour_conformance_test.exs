@@ -4,16 +4,16 @@ defmodule ExMemory.BehaviourConformanceTest do
   import Mox
 
   alias ExMemory.{
-    StoreMock,
-    VectorIndexMock,
-    RetrieverMock,
-    EmbedderMock,
-    EventArchiveMock,
     ArchiveMock,
+    EmbedderMock,
     Entity,
-    Fact,
     Event,
-    Query
+    EventArchiveMock,
+    Fact,
+    Query,
+    RetrieverMock,
+    StoreMock,
+    VectorIndexMock
   }
 
   setup :verify_on_exit!
