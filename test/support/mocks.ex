@@ -1,0 +1,6 @@
+Mox.defmock(ExMemory.StoreMock, for: ExMemory.Store)
+Mox.defmock(ExMemory.VectorIndexMock, for: ExMemory.VectorIndex)
+Mox.defmock(ExMemory.RetrieverMock, for: ExMemory.Retriever)
+Mox.defmock(ExMemory.EmbedderMock, for: ExMemory.Embedder)
+Mox.defmock(ExMemory.EventArchiveMock, for: ExMemory.EventArchive)
+Mox.defmock(ExMemory.ArchiveMock, for: ExMemory.Archive)

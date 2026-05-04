@@ -8,6 +8,13 @@ defmodule ExMemory.VectorSQLiteTest do
     %{idx: idx}
   end
 
+  describe "init/1" do
+    test "initializes with default :memory path" do
+      {:ok, idx} = SQLite.init([])
+      assert %{conn: _, path: ":memory:"} = idx
+    end
+  end
+
   describe "vector insert and search" do
     test "inserts an embedding and retrieves it via search", %{idx: idx} do
       {:ok, _} =
@@ -27,6 +34,33 @@ defmodule ExMemory.VectorSQLiteTest do
       assert r.id == "emb1"
       assert_in_delta r.score, 1.0, 0.001
       assert r.data.entity_id == "e1"
+    end
+
+    test "insert with minimal fields (no entity_id, source_id, metadata)", %{idx: idx} do
+      {:ok, emb} =
+        SQLite.insert(idx, %{id: "emb_min", vector: [1.0, 0.0], dimension: 2})
+
+      assert emb.entity_id == nil
+      assert emb.source_id == nil
+      assert emb.metadata == %{}
+      assert emb.dimension == 2
+    end
+
+    test "insert with source_id", %{idx: idx} do
+      {:ok, emb} =
+        SQLite.insert(idx, %{
+          id: "emb_src",
+          source_id: "src1",
+          vector: [0.5, 0.5],
+          dimension: 2
+        })
+
+      assert emb.source_id == "src1"
+
+      {:ok, results} =
+        SQLite.query(idx, %Query{vector: [0.5, 0.5], top_k: 5, filters: %{source_id: "src1"}})
+
+      assert length(results) == 1
     end
 
     test "finds the most similar vector among multiple", %{idx: idx} do
@@ -50,6 +84,42 @@ defmodule ExMemory.VectorSQLiteTest do
         SQLite.query(idx, %Query{vector: [1.0, 0.0, 0.0], top_k: 3})
 
       assert length(results) == 3
+    end
+
+    test "query with nil vector returns all with score 0.0", %{idx: idx} do
+      SQLite.insert(idx, %{id: "nv1", vector: [1.0, 0.0], dimension: 2})
+      {:ok, results} = SQLite.query(idx, %Query{vector: nil, top_k: 5, threshold: -0.01})
+      assert length(results) == 1
+      assert_in_delta hd(results).score, 0.0, 0.001
+    end
+
+    test "query with empty vector returns 0.0 score", %{idx: idx} do
+      SQLite.insert(idx, %{id: "ev1", vector: [1.0, 0.0], dimension: 2})
+      {:ok, results} = SQLite.query(idx, %Query{vector: [], top_k: 5, threshold: -0.01})
+      assert length(results) == 1
+      assert_in_delta hd(results).score, 0.0, 0.001
+    end
+
+    test "query returns result with correct data fields", %{idx: idx} do
+      {:ok, _} =
+        SQLite.insert(idx, %{
+          id: "data_test",
+          entity_id: "ent1",
+          source_id: "src1",
+          vector: [1.0, 0.0],
+          dimension: 2,
+          metadata: %{"tag" => "test"}
+        })
+
+      {:ok, [result]} =
+        SQLite.query(idx, %Query{vector: [1.0, 0.0], top_k: 1})
+
+      assert result.data.entity_id == "ent1"
+      assert result.data.source_id == "src1"
+      assert result.data.vector == [1.0, 0.0]
+      assert result.data.metadata["tag"] == "test"
+      assert result.data.inserted_at != nil
+      assert result.data.updated_at != nil
     end
   end
 
@@ -97,6 +167,44 @@ defmodule ExMemory.VectorSQLiteTest do
       assert length(results) == 1
       assert hd(results).id == "m5"
     end
+
+    test "combined entity_id and metadata filter", %{idx: idx} do
+      SQLite.insert(idx, %{
+        id: "combo1",
+        entity_id: "e1",
+        vector: [1.0, 0.0],
+        dimension: 2,
+        metadata: %{"tag" => "a"}
+      })
+
+      SQLite.insert(idx, %{
+        id: "combo2",
+        entity_id: "e1",
+        vector: [0.9, 0.1],
+        dimension: 2,
+        metadata: %{"tag" => "b"}
+      })
+
+      {:ok, results} =
+        SQLite.query(idx, %Query{
+          vector: [1.0, 0.0],
+          top_k: 10,
+          filters: %{entity_id: "e1", tag: "a"}
+        })
+
+      assert length(results) == 1
+      assert hd(results).id == "combo1"
+    end
+
+    test "filters with unknown key returns empty (no matching metadata)" do
+      {:ok, idx} = SQLite.init(path: ":memory:")
+      SQLite.insert(idx, %{id: "m_unk", vector: [1.0, 0.0], dimension: 2})
+
+      {:ok, results} =
+        SQLite.query(idx, %Query{vector: [1.0, 0.0], top_k: 10, filters: %{unknown: "val"}})
+
+      assert results == []
+    end
   end
 
   describe "top-k correctness" do
@@ -133,6 +241,15 @@ defmodule ExMemory.VectorSQLiteTest do
       assert length(results) == 1
       assert hd(results).id == "t1"
     end
+
+    test "nil threshold includes all", %{idx: idx} do
+      SQLite.insert(idx, %{id: "tn1", vector: [1.0, 0.0, 0.0], dimension: 3})
+      SQLite.insert(idx, %{id: "tn2", vector: [0.0, 1.0, 0.0], dimension: 3})
+
+      {:ok, results} = SQLite.query(idx, %Query{vector: [1.0, 0.0, 0.0], top_k: 10})
+
+      assert length(results) == 2
+    end
   end
 
   describe "delete" do
@@ -163,7 +280,7 @@ defmodule ExMemory.VectorSQLiteTest do
       SQLite.insert(idx, %{id: "z1", vector: [0.0, 0.0, 0.0], dimension: 3})
 
       {:ok, results} =
-        SQLite.query(idx, %Query{vector: [1.0, 0.0, 0.0], top_k: 5, threshold: 0.0})
+        SQLite.query(idx, %Query{vector: [1.0, 0.0, 0.0], top_k: 5, threshold: -0.01})
 
       [r] = results
       assert_in_delta r.score, 0.0, 0.001
@@ -177,6 +294,21 @@ defmodule ExMemory.VectorSQLiteTest do
 
       [r] = results
       assert_in_delta r.score, 1.0, 0.01
+    end
+
+    test "returns 0.0 for dimension mismatch", %{idx: idx} do
+      SQLite.insert(idx, %{id: "dim1", vector: [1.0, 0.0], dimension: 2})
+
+      {:ok, results} =
+        SQLite.query(idx, %Query{vector: [1.0, 0.0, 0.0], top_k: 5, threshold: -0.01})
+
+      [r] = results
+      assert_in_delta r.score, 0.0, 0.001
+    end
+
+    test "search with no vectors in store returns empty", %{idx: idx} do
+      {:ok, results} = SQLite.query(idx, %Query{vector: [1.0, 0.0], top_k: 5})
+      assert results == []
     end
   end
 end

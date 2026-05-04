@@ -8,6 +8,22 @@ defmodule ExMemory.StoreSQLiteTest do
     %{store: store}
   end
 
+  describe "init/1" do
+    test "initializes with default :memory path" do
+      {:ok, store} = SQLite.init([])
+      assert %{conn: _, path: ":memory:"} = store
+    end
+
+    test "initializes with custom path" do
+      path =
+        System.tmp_dir!() |> Path.join("ex_memory_test_#{:erlang.unique_integer([:positive])}.db")
+
+      {:ok, store} = SQLite.init(path: path)
+      assert %{conn: _, path: ^path} = store
+      File.rm(path)
+    end
+  end
+
   describe "entity insert and retrieval" do
     test "inserts and retrieves an entity", %{store: store} do
       entity = %Entity{id: "e1", type: "person", name: "Alice"}
@@ -22,6 +38,24 @@ defmodule ExMemory.StoreSQLiteTest do
       {:ok, [retrieved]} = SQLite.query(store, :entity, id: "e1")
       assert retrieved.id == "e1"
       assert retrieved.name == "Alice"
+    end
+
+    test "inserts entity with source_id and metadata", %{store: store} do
+      entity = %Entity{
+        id: "e_meta",
+        type: "person",
+        name: "Zara",
+        source_id: "s1",
+        metadata: %{"level" => 5, "active" => true}
+      }
+
+      {:ok, inserted} = SQLite.insert(store, entity)
+      assert inserted.source_id == "s1"
+      assert inserted.metadata["level"] == 5
+
+      {:ok, [retrieved]} = SQLite.query(store, :entity, id: "e_meta")
+      assert retrieved.metadata["level"] == 5
+      assert retrieved.metadata["active"] == true
     end
 
     test "updates an entity", %{store: store} do
@@ -51,12 +85,38 @@ defmodule ExMemory.StoreSQLiteTest do
       assert hd(people).name == "Carol"
     end
 
+    test "queries entities by name", %{store: store} do
+      SQLite.insert(store, %Entity{id: "e_n1", type: "person", name: "Diana"})
+      SQLite.insert(store, %Entity{id: "e_n2", type: "person", name: "Eve"})
+      {:ok, results} = SQLite.query(store, :entity, name: "Diana")
+      assert length(results) == 1
+      assert hd(results).id == "e_n1"
+    end
+
     test "queries entities by metadata", %{store: store} do
       entity = %Entity{id: "e6", type: "person", name: "Dave", metadata: %{"dept" => "eng"}}
       SQLite.insert(store, entity)
       {:ok, results} = SQLite.query(store, :entity, [{:metadata, "dept", "eng"}])
       assert length(results) == 1
       assert hd(results).name == "Dave"
+    end
+
+    test "queries entities with no filters returns all", %{store: store} do
+      SQLite.insert(store, %Entity{id: "e_a1", type: "person", name: "A1"})
+      SQLite.insert(store, %Entity{id: "e_a2", type: "org", name: "A2"})
+      {:ok, results} = SQLite.query(store, :entity, [])
+      assert length(results) >= 2
+    end
+
+    test "queries entities with unknown filter ignores it", %{store: store} do
+      SQLite.insert(store, %Entity{id: "e_unk", type: "person", name: "Unk"})
+      {:ok, results} = SQLite.query(store, :entity, unknown_key: "val")
+      assert length(results) == 1
+    end
+
+    test "query returns empty list for no matches", %{store: store} do
+      {:ok, results} = SQLite.query(store, :entity, id: "nonexistent")
+      assert results == []
     end
   end
 
@@ -83,6 +143,23 @@ defmodule ExMemory.StoreSQLiteTest do
       assert retrieved.valid_from == "2024-01-01T00:00:00Z"
     end
 
+    test "inserts fact with source_id and metadata", %{store: store} do
+      fact = %Fact{
+        id: "f_meta",
+        subject: "X",
+        predicate: "knows",
+        object: "Y",
+        source_id: "s1",
+        metadata: %{"confidence" => 0.95}
+      }
+
+      {:ok, inserted} = SQLite.insert(store, fact)
+      assert inserted.source_id == "s1"
+
+      {:ok, [retrieved]} = SQLite.query(store, :fact, id: "f_meta")
+      assert retrieved.metadata["confidence"] == 0.95
+    end
+
     test "queries facts by subject", %{store: store} do
       SQLite.insert(store, %Fact{
         id: "f2",
@@ -96,6 +173,56 @@ defmodule ExMemory.StoreSQLiteTest do
       {:ok, results} = SQLite.query(store, :fact, subject: "Carol")
       assert length(results) == 1
       assert hd(results).object == "Acme"
+    end
+
+    test "queries facts by predicate", %{store: store} do
+      SQLite.insert(store, %Fact{id: "f_pred1", subject: "A", predicate: "manages", object: "B"})
+
+      SQLite.insert(store, %Fact{
+        id: "f_pred2",
+        subject: "C",
+        predicate: "reports_to",
+        object: "D"
+      })
+
+      {:ok, results} = SQLite.query(store, :fact, predicate: "manages")
+      assert length(results) == 1
+      assert hd(results).id == "f_pred1"
+    end
+
+    test "queries facts by object", %{store: store} do
+      SQLite.insert(store, %Fact{id: "f_obj1", subject: "A", predicate: "works_at", object: "HQ"})
+
+      SQLite.insert(store, %Fact{
+        id: "f_obj2",
+        subject: "B",
+        predicate: "works_at",
+        object: "Remote"
+      })
+
+      {:ok, results} = SQLite.query(store, :fact, object: "HQ")
+      assert length(results) == 1
+    end
+
+    test "queries facts by source_id", %{store: store} do
+      SQLite.insert(store, %Fact{
+        id: "f_sid1",
+        subject: "A",
+        predicate: "p",
+        object: "B",
+        source_id: "src1"
+      })
+
+      SQLite.insert(store, %Fact{
+        id: "f_sid2",
+        subject: "C",
+        predicate: "p",
+        object: "D",
+        source_id: "src2"
+      })
+
+      {:ok, results} = SQLite.query(store, :fact, source_id: "src1")
+      assert length(results) == 1
     end
 
     test "queries facts by temporal range", %{store: store} do
@@ -117,12 +244,25 @@ defmodule ExMemory.StoreSQLiteTest do
       assert hd(results).subject == "Eve"
     end
 
+    test "queries facts with no filters returns all", %{store: store} do
+      SQLite.insert(store, %Fact{id: "f_all1", subject: "A", predicate: "p", object: "B"})
+      SQLite.insert(store, %Fact{id: "f_all2", subject: "C", predicate: "q", object: "D"})
+      {:ok, results} = SQLite.query(store, :fact, [])
+      assert length(results) >= 2
+    end
+
     test "updates a fact", %{store: store} do
       {:ok, fact} =
         SQLite.insert(store, %Fact{id: "f5", subject: "A", predicate: "p", object: "B"})
 
       {:ok, updated} = SQLite.update(store, %{fact | object: "C"})
       assert updated.object == "C"
+    end
+
+    test "deletes a fact", %{store: store} do
+      SQLite.insert(store, %Fact{id: "f_del", subject: "A", predicate: "p", object: "B"})
+      {:ok, :deleted} = SQLite.delete(store, :fact, "f_del")
+      {:ok, []} = SQLite.query(store, :fact, id: "f_del")
     end
   end
 
@@ -142,6 +282,20 @@ defmodule ExMemory.StoreSQLiteTest do
       {:ok, [retrieved]} = SQLite.query(store, :event, id: "ev1")
       assert retrieved.event_type == "login"
       assert retrieved.payload == %{"ip" => "10.0.0.1"}
+    end
+
+    test "inserts event with source_id and metadata", %{store: store} do
+      event = %Event{
+        id: "ev_meta",
+        event_type: "action",
+        occurred_at: "2024-03-01T12:00:00Z",
+        source_id: "s1",
+        metadata: %{"browser" => "chrome"}
+      }
+
+      {:ok, inserted} = SQLite.insert(store, event)
+      assert inserted.source_id == "s1"
+      assert inserted.metadata == %{"browser" => "chrome"}
     end
 
     test "events cannot be updated", %{store: store} do
@@ -186,6 +340,19 @@ defmodule ExMemory.StoreSQLiteTest do
       {:ok, results} = SQLite.query(store, :event, source_id: "s1")
       assert length(results) == 1
     end
+
+    test "queries events with no filters returns all", %{store: store} do
+      SQLite.insert(store, %Event{id: "ev_all1", event_type: "a", occurred_at: "2024-01-01"})
+      SQLite.insert(store, %Event{id: "ev_all2", event_type: "b", occurred_at: "2024-01-02"})
+      {:ok, results} = SQLite.query(store, :event, [])
+      assert length(results) >= 2
+    end
+
+    test "deletes an event", %{store: store} do
+      SQLite.insert(store, %Event{id: "ev_del", event_type: "temp", occurred_at: "2024-01-01"})
+      {:ok, :deleted} = SQLite.delete(store, :event, "ev_del")
+      {:ok, []} = SQLite.query(store, :event, id: "ev_del")
+    end
   end
 
   describe "source operations" do
@@ -198,10 +365,44 @@ defmodule ExMemory.StoreSQLiteTest do
       assert retrieved.identifier == "csv-upload"
     end
 
+    test "inserts source with metadata", %{store: store} do
+      source = %Source{id: "s_meta", kind: "api", identifier: "v3", metadata: %{"env" => "prod"}}
+      {:ok, inserted} = SQLite.insert(store, source)
+      assert inserted.metadata["env"] == "prod"
+    end
+
     test "updates a source", %{store: store} do
       {:ok, source} = SQLite.insert(store, %Source{id: "s3", kind: "api", identifier: "v1"})
       {:ok, updated} = SQLite.update(store, %{source | identifier: "v2"})
       assert updated.identifier == "v2"
+    end
+
+    test "queries sources by kind", %{store: store} do
+      SQLite.insert(store, %Source{id: "s_k1", kind: "api", identifier: "a"})
+      SQLite.insert(store, %Source{id: "s_k2", kind: "import", identifier: "b"})
+
+      {:ok, results} = SQLite.query(store, :source, kind: "api")
+      assert length(results) == 1
+      assert hd(results).id == "s_k1"
+    end
+
+    test "queries sources by identifier", %{store: store} do
+      SQLite.insert(store, %Source{id: "s_id1", kind: "api", identifier: "unique_id"})
+      {:ok, results} = SQLite.query(store, :source, identifier: "unique_id")
+      assert length(results) == 1
+    end
+
+    test "queries sources with no filters returns all", %{store: store} do
+      SQLite.insert(store, %Source{id: "s_all1", kind: "a", identifier: "x"})
+      SQLite.insert(store, %Source{id: "s_all2", kind: "b", identifier: "y"})
+      {:ok, results} = SQLite.query(store, :source, [])
+      assert length(results) >= 2
+    end
+
+    test "deletes a source", %{store: store} do
+      SQLite.insert(store, %Source{id: "s_del", kind: "temp", identifier: "del"})
+      {:ok, :deleted} = SQLite.delete(store, :source, "s_del")
+      {:ok, []} = SQLite.query(store, :source, id: "s_del")
     end
   end
 
@@ -220,10 +421,43 @@ defmodule ExMemory.StoreSQLiteTest do
       assert retrieved.source_ids == ["s1", "s2"]
     end
 
+    test "inserts reflection with metadata", %{store: store} do
+      reflection = %Reflection{
+        id: "r_meta",
+        content: "insight",
+        metadata: %{"model" => "gpt-4"}
+      }
+
+      {:ok, inserted} = SQLite.insert(store, reflection)
+      assert inserted.metadata["model"] == "gpt-4"
+    end
+
     test "updates a reflection", %{store: store} do
       {:ok, reflection} = SQLite.insert(store, %Reflection{id: "r2", content: "Initial insight"})
       {:ok, updated} = SQLite.update(store, %{reflection | content: "Revised insight"})
       assert updated.content == "Revised insight"
+    end
+
+    test "queries reflections by content", %{store: store} do
+      SQLite.insert(store, %Reflection{id: "r_c1", content: "specific pattern"})
+      SQLite.insert(store, %Reflection{id: "r_c2", content: "other insight"})
+
+      {:ok, results} = SQLite.query(store, :reflection, content: "specific pattern")
+      assert length(results) == 1
+      assert hd(results).id == "r_c1"
+    end
+
+    test "queries reflections with no filters returns all", %{store: store} do
+      SQLite.insert(store, %Reflection{id: "r_all1", content: "a"})
+      SQLite.insert(store, %Reflection{id: "r_all2", content: "b"})
+      {:ok, results} = SQLite.query(store, :reflection, [])
+      assert length(results) >= 2
+    end
+
+    test "deletes a reflection", %{store: store} do
+      SQLite.insert(store, %Reflection{id: "r_del", content: "temp"})
+      {:ok, :deleted} = SQLite.delete(store, :reflection, "r_del")
+      {:ok, []} = SQLite.query(store, :reflection, id: "r_del")
     end
   end
 

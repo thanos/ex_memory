@@ -2,6 +2,13 @@
 
 A local-first, pluggable, high-level memory system for LLMs and applications, written in Elixir.
 
+
+[![Hex.pm](https://img.shields.io/hexpm/v/ex_systolic.svg)](https://hex.pm/packages/ex_memory)
+[![Hex.pm](https://img.shields.io/hexpm/dt/ex_memory.svg)](https://hex.pm/packages/ex_memory)
+[![Hex.pm](https://img.shields.io/hexpm/l/ex_memory.svg)](https://hex.pm/packages/ex_memory)
+[![HexDocs.pm](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/ex_memory)
+[![Coverage Status](https://coveralls.io/repos/github/thanos/ex_memory/badge.svg?branch=main)](https://coveralls.io/github/thanos/ex_memory?branch=main)
+
 ExMemory is **not** a vector database, a thin wrapper over storage engines, or a chat memory utility. It is a memory abstraction layer that unifies structured facts, temporal events, semantic retrieval, and agent memory into a single system.
 
 ## Why ExMemory?
